@@ -1,0 +1,27 @@
+# Binaries
+/back-then
+/back-then.exe
+/dist/
+/bin/
+*.exe
+*.out
+*.test
+
+# Go
+/vendor/
+*.prof
+
+# Local index / scratch
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+.backthen/
+/tmp/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
