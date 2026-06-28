@@ -9,7 +9,33 @@ You don't remember the filename. You remember *roughly when* it happened — "th
 - ⚡ **Fast & tiny.** A single Go binary backed by a local SQLite index. Runs on a potato.
 - 🖥️ **Cross-platform.** Windows, macOS, Linux.
 
-> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 is scaffolding.
+> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 (scaffolding) is done; the index/find/sessions commands below are on the way.
+
+## Install / build
+
+Requires [Go](https://go.dev/dl/) 1.23+.
+
+```sh
+# Build the binary
+go build -o back-then ./cmd/back-then
+
+# ...or run straight from source
+go run ./cmd/back-then version
+```
+
+That's it today — a single static binary, no runtime to install.
+
+```sh
+$ back-then version
+back-then dev (commit none, built unknown, go1.23 linux/amd64)
+
+$ back-then version --short
+dev
+
+$ back-then --help      # lists every available command
+```
+
+Version metadata is stamped at release time via `-ldflags`.
 
 ## Quickstart (planned)
 
