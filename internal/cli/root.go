@@ -5,6 +5,9 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/spf13/cobra"
 )
 
@@ -24,6 +27,10 @@ machine.`
 // It is a constructor (rather than a package-level var) so tests can build a
 // fresh, isolated command tree per case.
 func NewRootCmd() *cobra.Command {
+	// dbPath holds the resolved index location, settable via the persistent
+	// --db flag and defaulting to a per-user data location.
+	var dbPath string
+
 	root := &cobra.Command{
 		Use:   "back-then",
 		Short: "A local-first time machine for your files",
@@ -39,7 +46,30 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
+	root.PersistentFlags().StringVar(&dbPath, "db", "", "path to the index database (default: per-user data dir)")
+
 	root.AddCommand(newVersionCmd())
+	root.AddCommand(newIndexCmd(&dbPath))
+	root.AddCommand(newStatsCmd(&dbPath))
 
 	return root
+}
+
+// defaultDBPath returns the resolved index path: the --db value when set,
+// otherwise <user-data-dir>/back-then/index.db. It ensures the parent
+// directory exists so callers can open the database directly.
+func defaultDBPath(flagVal string) (string, error) {
+	if flagVal != "" {
+		return flagVal, nil
+	}
+	base, err := os.UserConfigDir()
+	if err != nil || base == "" {
+		// Fall back to the working directory if the OS has no config dir.
+		base = "."
+	}
+	dir := filepath.Join(base, "back-then")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "index.db"), nil
 }
