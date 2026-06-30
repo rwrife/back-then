@@ -9,7 +9,7 @@ You don't remember the filename. You remember *roughly when* it happened — "th
 - ⚡ **Fast & tiny.** A single Go binary backed by a local SQLite index. Runs on a potato.
 - 🖥️ **Cross-platform.** Windows, macOS, Linux.
 
-> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 (scaffolding) is done; the index/find/sessions commands below are on the way.
+> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 (scaffolding) and M2 (the local index) are done: `index` and `stats` work today. `find`/`sessions`/`near` are on the way.
 
 ## Install / build
 
@@ -37,12 +37,68 @@ $ back-then --help      # lists every available command
 
 Version metadata is stamped at release time via `-ldflags`.
 
+## Indexing your files
+
+Point `back-then` at one or more directories. It walks each tree and records
+per-file signals — size, modified time, creation time (when the OS exposes
+it), extension, and parent folder — into a local SQLite index. Nothing leaves
+your machine, and **only metadata is read, never file contents**.
+
+```sh
+# Build (or update) the index for these trees
+back-then index ~/Downloads ~/Documents
+```
+
+```text
+Indexed /home/you/.config/back-then/index.db: 8423 files seen, 8423 updated, 0 unchanged.
+```
+
+Indexing is **incremental**: files whose size and modified time haven't
+changed since the last run are skipped, so re-indexing the same tree is fast.
+
+```text
+$ back-then index ~/Downloads ~/Documents
+Indexed /home/you/.config/back-then/index.db: 8423 files seen, 12 updated, 8411 unchanged.
+```
+
+Noisy machine-generated trees (`.git`, `node_modules`, caches, build output,
+and similar) are skipped by default. Add more with `--skip`:
+
+```sh
+back-then index ~/code --skip target --skip out
+```
+
+The index lives in your user config directory by default; override it with
+`--db /path/to/index.db` (handy for per-volume or throwaway indexes).
+
+## Inspecting the index
+
+`back-then stats` summarizes what's been indexed — file count, total size, the
+span of modified times, and the most common extensions:
+
+```text
+$ back-then stats
+Files:      8423
+Total size: 14.2 GiB
+Date span:  2017-08-02 → 2026-06-29
+Top extensions:
+  .jpg   2310
+  .pdf   1182
+  .png    944
+  .txt    611
+  .zip    402
+```
+
+Add `--json` for scripting (and `--top N` to change how many extensions are
+listed):
+
+```sh
+back-then stats --json
+```
+
 ## Quickstart (planned)
 
 ```sh
-# Build an index of where your stuff lives (local SQLite, incremental)
-back-then index ~/Downloads ~/Documents
-
 # Find by fuzzy time
 back-then find "around last spring"
 back-then find "the week of jun 3"

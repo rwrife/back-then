@@ -9,6 +9,7 @@ package render
 import (
 	"fmt"
 	"io"
+	"time"
 )
 
 // Line writes a single message followed by a newline to w. It's a trivial
@@ -17,4 +18,28 @@ import (
 func Line(w io.Writer, msg string) error {
 	_, err := fmt.Fprintln(w, msg)
 	return err
+}
+
+// Bytes formats a byte count as a short human-readable string using binary
+// (1024-based) units. Example: 1536 -> "1.5 KiB".
+func Bytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// Date formats a timestamp as a compact local date string, or "—" for the
+// zero time (unknown).
+func Date(t time.Time) string {
+	if t.IsZero() {
+		return "\u2014"
+	}
+	return t.Format("2006-01-02")
 }

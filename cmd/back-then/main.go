@@ -14,8 +14,9 @@ import (
 
 func main() {
 	if err := cli.NewRootCmd().Execute(); err != nil {
-		// cobra already prints the error; just set a non-zero exit code.
-		fmt.Fprintln(os.Stderr)
+		// The root command silences cobra's own error printing so we control
+		// output; surface the error here and exit non-zero.
+		fmt.Fprintln(os.Stderr, "back-then:", err)
 		os.Exit(1)
 	}
 }
