@@ -87,8 +87,12 @@ func TestParseGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden (run with -update to create): %v", err)
 	}
-	if got != string(want) {
-		t.Errorf("golden mismatch.\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	// Normalize CRLF -> LF so the comparison is stable even if the golden
+	// file was checked out with Windows line endings (e.g. a stray git
+	// autocrlf config). The generated output always uses \n.
+	wantStr := strings.ReplaceAll(string(want), "\r\n", "\n")
+	if got != wantStr {
+		t.Errorf("golden mismatch.\n--- got ---\n%s\n--- want ---\n%s", got, wantStr)
 	}
 }
 
