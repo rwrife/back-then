@@ -289,6 +289,99 @@ func candidateMargin(w when.Window) time.Duration {
 	return margin
 }
 
+// FileRecord is a single indexed file as returned by AllFiles/FileByPath. It
+// carries the fields sessions/near need: identity, size, extension, folder,
+// and the timestamps used to place the file on the timeline.
+type FileRecord struct {
+	Path      string
+	Size      int64
+	Ext       string
+	ParentDir string
+	// ModTime is always present. CreateTime/CaptureTime are the zero value
+	// when unknown (stored as 0).
+	ModTime     time.Time
+	CreateTime  time.Time
+	CaptureTime time.Time
+}
+
+// EffectiveTime is the timestamp back-then uses to place a file on the
+// timeline. Capture time (EXIF, when populated) is the most meaningful, then
+// creation/birth time, falling back to modification time which is always set.
+func (f FileRecord) EffectiveTime() time.Time {
+	if !f.CaptureTime.IsZero() {
+		return f.CaptureTime
+	}
+	if !f.CreateTime.IsZero() {
+		return f.CreateTime
+	}
+	return f.ModTime
+}
+
+// timeOrZero maps a stored unix-nanosecond value back to a time, treating the
+// 0 sentinel as "unknown" (the zero time).
+func timeOrZero(n int64) time.Time {
+	if n == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, n)
+}
+
+// scanFiles reads FileRecords from an open *sql.Rows selecting the standard
+// column set (path,size,ext,parent_dir,mod_time,create_time,capture_time).
+func scanFiles(rows *sql.Rows) ([]FileRecord, error) {
+	var out []FileRecord
+	for rows.Next() {
+		var r FileRecord
+		var mod, create, capture int64
+		if err := rows.Scan(&r.Path, &r.Size, &r.Ext, &r.ParentDir, &mod, &create, &capture); err != nil {
+			return nil, fmt.Errorf("scan file: %w", err)
+		}
+		r.ModTime = timeOrZero(mod)
+		r.CreateTime = timeOrZero(create)
+		r.CaptureTime = timeOrZero(capture)
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate files: %w", err)
+	}
+	return out, nil
+}
+
+// AllFiles returns every indexed file. Records are ordered by effective time
+// (COALESCE of capture/create/mod) ascending, then path, so callers that
+// cluster along the timeline can consume them in order without re-sorting.
+func (s *Store) AllFiles() ([]FileRecord, error) {
+	rows, err := s.db.Query(`
+SELECT path, size, ext, parent_dir, mod_time, create_time, capture_time
+FROM files
+ORDER BY COALESCE(NULLIF(capture_time,0), NULLIF(create_time,0), mod_time) ASC, path ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("query all files: %w", err)
+	}
+	defer rows.Close()
+	return scanFiles(rows)
+}
+
+// FileByPath returns the record for an exact indexed path. The boolean is
+// false (with a nil error) when no such path is indexed.
+func (s *Store) FileByPath(path string) (FileRecord, bool, error) {
+	rows, err := s.db.Query(`
+SELECT path, size, ext, parent_dir, mod_time, create_time, capture_time
+FROM files WHERE path = ?`, path)
+	if err != nil {
+		return FileRecord{}, false, fmt.Errorf("query file: %w", err)
+	}
+	defer rows.Close()
+	recs, err := scanFiles(rows)
+	if err != nil {
+		return FileRecord{}, false, err
+	}
+	if len(recs) == 0 {
+		return FileRecord{}, false, nil
+	}
+	return recs[0], true, nil
+}
+
 // ExtCount is a single extension's file count, used in Stats.TopExts.
 type ExtCount struct {
 	Ext   string
