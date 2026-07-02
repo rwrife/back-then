@@ -9,7 +9,7 @@ You don't remember the filename. You remember *roughly when* it happened — "th
 - ⚡ **Fast & tiny.** A single Go binary backed by a local SQLite index. Runs on a potato.
 - 🖥️ **Cross-platform.** Windows, macOS, Linux.
 
-> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 (scaffolding), M2 (the local index), and M3 (fuzzy-time `find`) are done: `index`, `stats`, and `find` work today. `sessions`/`near` are on the way.
+> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 (scaffolding), M2 (the local index), M3 (fuzzy-time `find`), and M4 (sessions + `near`) are done: `index`, `stats`, `find`, `sessions`, and `near` work today.
 
 ## Install / build
 
@@ -138,6 +138,56 @@ back-then find "last spring" --limit 50
 back-then find "last spring" --json
 ```
 
+## Browsing sessions
+
+The payoff: instead of digging through folders, browse the **sessions** your
+files naturally fall into — bursts that arrived or changed close together in
+time. `back-then sessions` lists them newest-first, each with when it
+happened, how many files, the dominant file types, and the folder most of
+those files lived in:
+
+```text
+$ back-then sessions
+WHEN                    FILES  TYPES          TOP FOLDER
+2026-06-29 14:02–14:19  37     .jpg×31 .mov×4  …/Photos/2026-06-29
+2026-06-12 09:41–10:03  6      .pdf×4 .docx×2  …/Documents/taxes
+2026-05-30 21:10        1      .zip×1          …/Downloads
+```
+
+Sessions are split wherever the gap between consecutive files gets large. The
+split is **folder-aware** — files staying in the same directory tolerate a
+wider lull before a new session begins. Tune the base gap with `--gap`:
+
+```sh
+back-then sessions --gap 90m     # tighter bursts
+back-then sessions --gap 6h      # looser grouping
+back-then sessions --json        # machine-readable
+```
+
+## `near` — what arrived together?
+
+The killer move. Give `back-then` a file you *do* remember, and it surfaces
+the other files from the same episode — everything that arrived around the
+same time — ordered by how close in time they are:
+
+```text
+$ back-then near ~/Downloads/mystery.pdf
+Around /home/you/Downloads/mystery.pdf (2026-06-12), within 6h0m0s:
+OFFSET  WHEN              SIZE      PATH
++2m     2026-06-12 09:43  1.2 MiB   /home/you/Downloads/boarding-pass.pdf
++14m    2026-06-12 09:55  318 KiB   /home/you/Documents/taxes/w2.pdf
+-31m    2026-06-12 09:10  4.0 MiB   /home/you/Downloads/hotel.png
+```
+
+The file must already be in the index. Widen or narrow the search window with
+`--window`:
+
+```sh
+back-then near ~/Downloads/mystery.pdf --window 30m   # only the tight burst
+back-then near ~/Downloads/mystery.pdf --window 24h   # the whole day
+back-then near ~/Downloads/mystery.pdf --json
+```
+
 ## Quickstart (planned)
 
 ```sh
@@ -146,6 +196,10 @@ back-then sessions
 
 # The killer move: what arrived around the same time as this file?
 back-then near ~/Downloads/mystery.pdf
+
+# Find by fuzzy time
+back-then find "around last spring"
+back-then find "the week of jun 3"
 ```
 
 Add `--json` to any command for scripting.
