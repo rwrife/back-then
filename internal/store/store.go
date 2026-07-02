@@ -305,13 +305,30 @@ type FileRecord struct {
 }
 
 // EffectiveTime is the timestamp back-then uses to place a file on the
-// timeline. Capture time (EXIF, when populated) is the most meaningful, then
-// creation/birth time, falling back to modification time which is always set.
+// timeline. Capture time (EXIF, when populated) is the most meaningful and
+// always wins. Otherwise back-then uses the EARLIEST of creation/birth time
+// and modification time.
+//
+// Why earliest, not "creation preferred"? back-then answers "when did this
+// file land in my life?". Two real cases pull in opposite directions:
+//   - A file edited long after it arrived has a fresh mtime; its (older)
+//     birth time is the truer arrival signal.
+//   - A file copied/extracted/restored recently often keeps its original
+//     (older) mtime while getting a fresh creation time (this is exactly how
+//     Windows behaves — CreationTime is set to "now" on copy). Here the older
+//     mtime is the truer signal.
+//
+// Taking the earliest of the two honors whichever is older and avoids letting
+// a copy's "now" creation time bury an old file's real timestamp. It also
+// makes clustering deterministic across platforms: Linux (no birth time) and
+// Windows (birth time = copy time) now agree whenever mtime is the older,
+// meaningful value. Capture time still overrides both because EXIF is the
+// authoritative content date.
 func (f FileRecord) EffectiveTime() time.Time {
 	if !f.CaptureTime.IsZero() {
 		return f.CaptureTime
 	}
-	if !f.CreateTime.IsZero() {
+	if !f.CreateTime.IsZero() && f.CreateTime.Before(f.ModTime) {
 		return f.CreateTime
 	}
 	return f.ModTime
@@ -347,14 +364,24 @@ func scanFiles(rows *sql.Rows) ([]FileRecord, error) {
 	return out, nil
 }
 
+// effectiveTimeSQL is the SQL expression mirroring FileRecord.EffectiveTime:
+// capture time when known, otherwise the EARLIEST of creation and mod time
+// (mod alone when no creation time). It must stay in lock-step with the Go
+// method so on-disk ordering and in-memory placement agree on every platform.
+//
+// SQLite's scalar min() propagates NULL, so MIN(NULLIF(create_time,0),mod_time)
+// yields NULL when create_time is 0/unknown, letting the outer COALESCE fall
+// back to mod_time.
+const effectiveTimeSQL = `COALESCE(NULLIF(capture_time,0), MIN(NULLIF(create_time,0), mod_time), mod_time)`
+
 // AllFiles returns every indexed file. Records are ordered by effective time
-// (COALESCE of capture/create/mod) ascending, then path, so callers that
-// cluster along the timeline can consume them in order without re-sorting.
+// (see effectiveTimeSQL) ascending, then path, so callers that cluster along
+// the timeline can consume them in order without re-sorting.
 func (s *Store) AllFiles() ([]FileRecord, error) {
 	rows, err := s.db.Query(`
 SELECT path, size, ext, parent_dir, mod_time, create_time, capture_time
 FROM files
-ORDER BY COALESCE(NULLIF(capture_time,0), NULLIF(create_time,0), mod_time) ASC, path ASC`)
+ORDER BY ` + effectiveTimeSQL + ` ASC, path ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("query all files: %w", err)
 	}

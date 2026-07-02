@@ -183,3 +183,31 @@ func TestReopenPersists(t *testing.T) {
 		t.Errorf("after reopen incremental Skipped = %d, want 3", res.Skipped)
 	}
 }
+
+// TestEffectiveTimeEarliestOfCreateMod locks in the cross-platform contract
+// that a file's effective time is the EARLIEST meaningful timestamp, so a
+// fresh creation/birth time (e.g. Windows sets CreationTime to "now" on copy)
+// never buries an older, preserved mtime. This is the exact condition that
+// previously made M4's session tests pass on Linux but fail on Windows.
+func TestEffectiveTimeEarliestOfCreateMod(t *testing.T) {
+	old := time.Date(2025, 3, 10, 9, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 7, 1, 22, 7, 0, 0, time.UTC)
+	capt := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name             string
+		mod, create, cap time.Time
+		want             time.Time
+	}{
+		{"copy-preserves-old-mtime (Windows birth=now)", old, now, time.Time{}, old},
+		{"edited-after-arrival (create older)", now, old, time.Time{}, old},
+		{"no-create-time (Linux)", old, time.Time{}, time.Time{}, old},
+		{"capture-always-wins", now, old, capt, capt},
+	}
+	for _, c := range cases {
+		f := FileRecord{ModTime: c.mod, CreateTime: c.create, CaptureTime: c.cap}
+		if got := f.EffectiveTime(); !got.Equal(c.want) {
+			t.Errorf("%s: EffectiveTime = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
