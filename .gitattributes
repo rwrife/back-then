@@ -1,0 +1,7 @@
+# Normalize line endings so golden-file and text comparisons are stable
+# across platforms (Windows CI must not convert LF -> CRLF on checkout).
+* text=auto eol=lf
+
+# Golden test fixtures are compared byte-for-byte; pin them to LF explicitly.
+internal/when/testdata/*.txt text eol=lf
+*.go text eol=lf

@@ -51,6 +51,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newIndexCmd(&dbPath))
 	root.AddCommand(newStatsCmd(&dbPath))
+	root.AddCommand(newFindCmd(&dbPath))
 
 	return root
 }

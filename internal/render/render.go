@@ -43,3 +43,13 @@ func Date(t time.Time) string {
 	}
 	return t.Format("2006-01-02")
 }
+
+// DateTime formats a timestamp as a compact local date-and-time string, or
+// "—" for the zero time. Used where the time of day helps distinguish files
+// that share a day (e.g. find results).
+func DateTime(t time.Time) string {
+	if t.IsZero() {
+		return "\u2014"
+	}
+	return t.Format("2006-01-02 15:04")
+}

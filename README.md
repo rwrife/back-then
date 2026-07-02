@@ -9,7 +9,7 @@ You don't remember the filename. You remember *roughly when* it happened — "th
 - ⚡ **Fast & tiny.** A single Go binary backed by a local SQLite index. Runs on a potato.
 - 🖥️ **Cross-platform.** Windows, macOS, Linux.
 
-> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 (scaffolding) and M2 (the local index) are done: `index` and `stats` work today. `find`/`sessions`/`near` are on the way.
+> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 (scaffolding), M2 (the local index), and M3 (fuzzy-time `find`) are done: `index`, `stats`, and `find` work today. `sessions`/`near` are on the way.
 
 ## Install / build
 
@@ -96,13 +96,51 @@ listed):
 back-then stats --json
 ```
 
+## Finding files by *roughly when*
+
+This is the point of `back-then`. Instead of a filename, give it a fuzzy time
+phrase. It resolves the phrase into a date window, then ranks indexed files by
+how close their timestamp sits to that window — closest first.
+
+```text
+$ back-then find "last spring"
+Window: 2025-03-01 → 2025-06-01  (7 matches)
+SCORE  WHEN              SIZE      PATH
+1.00   2025-04-18 09:12  2.1 MiB   /home/you/Downloads/berlin-itinerary.pdf
+1.00   2025-05-02 14:55  88.0 KiB  /home/you/Documents/packing-list.md
+0.71   2025-06-09 17:30  3.4 MiB   /home/you/Downloads/hotel-receipt.pdf
+```
+
+Lots of phrasings work — relative periods, counts, months, seasons, years, and
+explicit dates:
+
+```sh
+back-then find "today"
+back-then find "this month"
+back-then find "3 weeks ago"
+back-then find "around march"
+back-then find "december 2024"
+back-then find "last winter"
+back-then find "2018"
+back-then find "2024-03-15"
+```
+
+Filler words (`around`, `the`, `sometime`, `in`) are ignored, and matching is
+case-insensitive. Files inside the window score `1.00`; files just outside
+decay smoothly with distance, so near-misses still surface.
+
+Use `--limit N` to change how many results are shown (default 20) and `--json`
+for scripting — the JSON includes the resolved window so you can see how your
+phrase was interpreted:
+
+```sh
+back-then find "last spring" --limit 50
+back-then find "last spring" --json
+```
+
 ## Quickstart (planned)
 
 ```sh
-# Find by fuzzy time
-back-then find "around last spring"
-back-then find "the week of jun 3"
-
 # Browse the episodes your files naturally cluster into
 back-then sessions
 

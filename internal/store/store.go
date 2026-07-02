@@ -14,7 +14,9 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/rwrife/back-then/internal/rank"
 	"github.com/rwrife/back-then/internal/walk"
+	"github.com/rwrife/back-then/internal/when"
 )
 
 // schemaVersion is bumped when the on-disk schema changes in an incompatible
@@ -207,6 +209,84 @@ ON CONFLICT(path) DO UPDATE SET
 		return res, fmt.Errorf("commit: %w", err)
 	}
 	return res, nil
+}
+
+// Candidates returns files whose effective timestamp falls within the query
+// window w, padded by a margin on each side so that ranking's proximity decay
+// has nearby-but-outside files to consider. The margin scales with the window
+// width (bounded) so a broad query pulls a proportionally wider candidate set.
+//
+// The effective timestamp is the EXIF capture time when present, else the
+// modified time (mirroring rank.Candidate.When). Results are ordered by that
+// timestamp ascending; ranking re-sorts by score. limit caps the number of
+// rows scanned from the store (<= 0 means a generous default).
+func (s *Store) Candidates(w when.Window, limit int) ([]rank.Candidate, error) {
+	if limit <= 0 {
+		limit = 5000
+	}
+	margin := candidateMargin(w)
+	lo := w.Start.Add(-margin)
+	hi := w.End.Add(margin)
+
+	// COALESCE(capture_time,0) is stored as 0 when unknown; treat 0 as "use
+	// mod_time" via the effective-time expression below so both columns are
+	// filtered and ordered consistently with rank.Candidate.When().
+	const effective = "CASE WHEN capture_time != 0 THEN capture_time ELSE mod_time END"
+	q := fmt.Sprintf(`
+SELECT path, size, mod_time, capture_time, ext, parent_dir
+FROM files
+WHERE %[1]s >= ? AND %[1]s < ?
+ORDER BY %[1]s ASC
+LIMIT ?`, effective)
+
+	rows, err := s.db.Query(q, lo.UnixNano(), hi.UnixNano(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("query candidates: %w", err)
+	}
+	defer rows.Close()
+
+	var out []rank.Candidate
+	for rows.Next() {
+		var (
+			c       rank.Candidate
+			mod     int64
+			capture int64
+		)
+		if err := rows.Scan(&c.Path, &c.Size, &mod, &capture, &c.Ext, &c.ParentDir); err != nil {
+			return nil, fmt.Errorf("scan candidate: %w", err)
+		}
+		if mod != 0 {
+			c.ModTime = time.Unix(0, mod)
+		}
+		if capture != 0 {
+			c.CaptureTime = time.Unix(0, capture)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate candidates: %w", err)
+	}
+	return out, nil
+}
+
+// candidateMargin is the padding added on each side of the query window when
+// pulling candidates, equal to the window width (so the search span is ~3x the
+// window) but clamped between a floor and a ceiling to keep result sets useful
+// for both pinpoint and broad queries.
+func candidateMargin(w when.Window) time.Duration {
+	width := w.End.Sub(w.Start)
+	margin := width
+	const (
+		floor = 3 * 24 * time.Hour
+		ceil  = 365 * 24 * time.Hour
+	)
+	if margin < floor {
+		margin = floor
+	}
+	if margin > ceil {
+		margin = ceil
+	}
+	return margin
 }
 
 // ExtCount is a single extension's file count, used in Stats.TopExts.
