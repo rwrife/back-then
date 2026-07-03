@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/rwrife/back-then/internal/exif"
 )
 
 // FileSignal is the set of on-disk signals back-then collects for a single
@@ -31,7 +33,7 @@ type FileSignal struct {
 	// ParentDir is the absolute path of the containing directory.
 	ParentDir string
 	// CaptureTime is the EXIF DateTimeOriginal for images when present
-	// (populated in M5); otherwise the zero value.
+	// (populated in M5 via internal/exif); otherwise the zero value.
 	CaptureTime time.Time
 }
 
@@ -155,6 +157,15 @@ func walkOne(root string, skip map[string]struct{}, visit VisitFunc) error {
 			CreateTime: birthTime(info),
 			Ext:        strings.ToLower(filepath.Ext(path)),
 			ParentDir:  filepath.Dir(path),
+		}
+		// Best-effort EXIF capture date for images. A missing/unreadable date
+		// is normal and simply leaves CaptureTime zero (callers fall back to
+		// mod/create time); a hard I/O error is swallowed so one bad file never
+		// aborts the walk.
+		if exif.HasEXIFExt(path) {
+			if ct, ok, err := exif.CaptureTime(path); err == nil && ok {
+				sig.CaptureTime = ct
+			}
 		}
 		return visit(sig)
 	})
