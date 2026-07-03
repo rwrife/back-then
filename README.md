@@ -9,7 +9,7 @@ You don't remember the filename. You remember *roughly when* it happened — "th
 - ⚡ **Fast & tiny.** A single Go binary backed by a local SQLite index. Runs on a potato.
 - 🖥️ **Cross-platform.** Windows, macOS, Linux.
 
-> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 (scaffolding), M2 (the local index), M3 (fuzzy-time `find`), and M4 (sessions + `near`) are done: `index`, `stats`, `find`, `sessions`, and `near` work today.
+> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 (scaffolding), M2 (the local index), M3 (fuzzy-time `find`), and M4 (sessions + `near`) are done: `index`, `stats`, `find`, `sessions`, and `near` work today. M5 is in progress — EXIF capture dates and `.backthenignore` scoping have landed.
 
 ## Install / build
 
@@ -67,6 +67,48 @@ and similar) are skipped by default. Add more with `--skip`:
 ```sh
 back-then index ~/code --skip target --skip out
 ```
+
+### Scoping what gets indexed with `.backthenignore`
+
+For finer control, drop a `.backthenignore` file in any directory you index.
+It uses a familiar **gitignore-style** syntax and applies to that directory
+and everything below it:
+
+```gitignore
+# back-then ignore file
+*.log            # skip log files anywhere below here
+secret.txt       # skip a specific file by name
+cache/           # trailing slash: skip directories named "cache"
+/build           # leading slash: only the build/ next to this file
+logs/*.tmp       # a path pattern, relative to this file
+!keep.log        # "!" re-includes something an earlier rule skipped
+```
+
+Rules:
+
+- One pattern per line; blank lines and `#` comments are ignored.
+- A pattern with **no slash** matches by base name at any depth (`*.log`).
+- A **trailing `/`** matches directories only (and prunes everything inside).
+- A **leading `/`** anchors the pattern to the directory holding the ignore
+  file; a pattern that otherwise contains a `/` is matched against the path
+  relative to that directory.
+- A leading **`!`** negates (re-includes) a path a previous rule ignored.
+- Nested `.backthenignore` files stack: a deeper file can override a
+  shallower one, and within a file the **last matching rule wins**.
+
+The default skip list still applies on top of your ignore files. To index
+everything the skip list allows and ignore any `.backthenignore` files, pass
+`--no-ignore-file`:
+
+```sh
+back-then index ~/code --no-ignore-file
+```
+
+The default-skipped directory names are: `.git`, `.hg`, `.svn`,
+`node_modules`, `bower_components`, `vendor`, `.cache`, `.npm`, `.pnpm-store`,
+`__pycache__`, `.venv`, `venv`, `.idea`, `.vscode`, `.terraform`, `.gradle`,
+`.next`, `.nuxt`, `dist`, `build`, `target`, `.mypy_cache`, `.pytest_cache`,
+`.ruff_cache`, `.tox`, `.bundle`, `.DS_Store`, `.Trash`, `.trash`.
 
 The index lives in your user config directory by default; override it with
 `--db /path/to/index.db` (handy for per-volume or throwaway indexes).
