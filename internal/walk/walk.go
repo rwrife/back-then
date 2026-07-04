@@ -8,7 +8,7 @@
 package walk
 
 import (
-	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -74,7 +74,7 @@ var DefaultSkipDirs = map[string]struct{}{
 }
 
 // Options tunes a Walk. The zero value is valid and uses the default skip
-// list with no extra skips.
+// list with no extra skips and .backthenignore files honored.
 type Options struct {
 	// ExtraSkipDirs is merged with DefaultSkipDirs (by base name).
 	ExtraSkipDirs []string
@@ -83,6 +83,10 @@ type Options struct {
 	// list prunes), so this currently reserves space for future behavior and
 	// does not change defaults.
 	IncludeHidden bool
+	// NoIgnoreFile disables .backthenignore handling when true. By default
+	// (false) an ignore file found in any directory prunes matching entries in
+	// that directory and below, gitignore-style.
+	NoIgnoreFile bool
 }
 
 // VisitFunc is invoked once per regular file discovered during a walk.
@@ -111,43 +115,74 @@ func Walk(roots []string, opts Options, visit VisitFunc) error {
 		if err != nil {
 			return err
 		}
-		if err := walkOne(abs, skip, visit); err != nil {
+		if err := walkOne(abs, skip, opts, visit); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func walkOne(root string, skip map[string]struct{}, visit VisitFunc) error {
-	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			// Unreadable directory or vanished entry: skip it but keep going.
-			if d != nil && d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
+// walkOne traverses a single resolved root. It descends recursively (rather
+// than via filepath.WalkDir) so per-directory .backthenignore files can be
+// pushed onto an ignore stack on the way down and their scope naturally ends
+// when the recursion unwinds. The root directory itself is never pruned by the
+// skip list, since the user pointed us at it explicitly.
+func walkOne(root string, skip map[string]struct{}, opts Options, visit VisitFunc) error {
+	var stack ignoreStack
+	if !opts.NoIgnoreFile {
+		if sc, ok := loadIgnoreScope(root); ok {
+			stack = ignoreStack{sc}
 		}
+	}
+	return walkDir(root, skip, opts, stack, visit)
+}
+
+// walkDir visits every regular file in dir and recurses into subdirectories,
+// applying the skip list and the current ignore stack. stack already includes
+// any ignore file present in dir's ancestors and in dir itself.
+func walkDir(dir string, skip map[string]struct{}, opts Options, stack ignoreStack, visit VisitFunc) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		// Unreadable directory (permissions, vanished): skip it but keep going.
+		return nil
+	}
+
+	for _, d := range entries {
+		path := filepath.Join(dir, d.Name())
 
 		if d.IsDir() {
-			// Never prune the root itself even if its base name is in the
-			// skip list (the user explicitly pointed us at it).
-			if path != root {
-				if _, skipped := skip[d.Name()]; skipped {
-					return fs.SkipDir
+			if _, skipped := skip[d.Name()]; skipped {
+				continue
+			}
+			if !opts.NoIgnoreFile && stack.ignored(path, true) {
+				continue
+			}
+			// Descend: load this directory's own ignore file (if any) onto a
+			// copy of the stack so siblings do not inherit it.
+			child := stack
+			if !opts.NoIgnoreFile {
+				if sc, ok := loadIgnoreScope(path); ok {
+					child = append(append(ignoreStack{}, stack...), sc)
 				}
 			}
-			return nil
+			if err := walkDir(path, skip, opts, child, visit); err != nil {
+				return err
+			}
+			continue
 		}
 
 		// Only index regular files; skip symlinks, devices, sockets, etc.
 		if !d.Type().IsRegular() {
-			return nil
+			continue
+		}
+		if !opts.NoIgnoreFile && stack.ignored(path, false) {
+			continue
 		}
 
 		info, ierr := d.Info()
 		if ierr != nil {
 			// File raced away between readdir and stat; skip it.
-			return nil
+			continue
 		}
 
 		sig := FileSignal{
@@ -167,6 +202,9 @@ func walkOne(root string, skip map[string]struct{}, visit VisitFunc) error {
 				sig.CaptureTime = ct
 			}
 		}
-		return visit(sig)
-	})
+		if err := visit(sig); err != nil {
+			return err
+		}
+	}
+	return nil
 }

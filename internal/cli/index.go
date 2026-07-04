@@ -15,6 +15,7 @@ import (
 // index, skipping files whose size and mod time are unchanged (incremental).
 func newIndexCmd(dbPath *string) *cobra.Command {
 	var skip []string
+	var noIgnoreFile bool
 
 	cmd := &cobra.Command{
 		Use:   "index <path> [path...]",
@@ -26,7 +27,12 @@ folder) into the local SQLite index.
 Indexing is incremental: files whose size and modified time are unchanged
 since the last run are skipped, so re-indexing a tree is fast. A default skip
 list (.git, node_modules, caches, build output, and similar) keeps noise out;
-add more with --skip.`,
+add more with --skip.
+
+A .backthenignore file (gitignore-style patterns) in any indexed directory
+prunes matching files and folders in that directory and below. Pass
+--no-ignore-file to ignore those files and index everything the skip list
+allows.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Validate roots up front so a typo fails fast with a clear message.
@@ -51,7 +57,10 @@ add more with --skip.`,
 			}
 			defer st.Close()
 
-			res, err := st.Index(args, walk.Options{ExtraSkipDirs: skip})
+			res, err := st.Index(args, walk.Options{
+				ExtraSkipDirs: skip,
+				NoIgnoreFile:  noIgnoreFile,
+			})
 			if err != nil {
 				return err
 			}
@@ -66,6 +75,7 @@ add more with --skip.`,
 	}
 
 	cmd.Flags().StringSliceVar(&skip, "skip", nil, "extra directory names to skip (repeatable or comma-separated)")
+	cmd.Flags().BoolVar(&noIgnoreFile, "no-ignore-file", false, "do not honor .backthenignore files")
 
 	return cmd
 }
