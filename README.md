@@ -142,7 +142,8 @@ back-then stats --json
 
 This is the point of `back-then`. Instead of a filename, give it a fuzzy time
 phrase. It resolves the phrase into a date window, then ranks indexed files by
-how close their timestamp sits to that window — closest first.
+how well they match — closest in time first, with two lighter signals breaking
+ties between files at a similar distance.
 
 ```text
 $ back-then find "last spring"
@@ -170,6 +171,27 @@ back-then find "2024-03-15"
 Filler words (`around`, `the`, `sometime`, `in`) are ignored, and matching is
 case-insensitive. Files inside the window score `1.00`; files just outside
 decay smoothly with distance, so near-misses still surface.
+
+### How ranking blends signals
+
+Time proximity is the primary driver and sets a ceiling on every file's score.
+Two secondary signals then lift files toward that ceiling to break ties between
+candidates at a similar distance — they can reorder near-neighbors but never let
+a far-off file leapfrog a closer one:
+
+- **Signal richness** — files carrying trustworthy metadata rank higher. An
+  EXIF capture time (a real "when this happened" signal) counts most, with a
+  known extension and a plausible non-empty size adding a little more. A
+  well-documented photo edges out a zero-byte, extensionless scratch file at
+  the same distance.
+- **Folder cohesion** — files that belong to a burst reinforce each other. A
+  folder packed with near-window files (a trip, a shoot, an import) scores as a
+  tight cluster, so a photo from that event outranks an otherwise-identical
+  file sitting alone in its own folder.
+
+Because the secondary signals are proximity-weighted, a folder that merely
+contains many far-off files doesn't masquerade as a cluster, and every score
+stays within `[0, 1]`.
 
 Use `--limit N` to change how many results are shown (default 20) and `--json`
 for scripting — the JSON includes the resolved window so you can see how your
