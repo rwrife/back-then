@@ -252,6 +252,36 @@ back-then near ~/Downloads/mystery.pdf --window 24h   # the whole day
 back-then near ~/Downloads/mystery.pdf --json
 ```
 
+## `forget` — prune the index for privacy or space
+
+Changed your mind about indexing a stretch of time? `back-then forget` removes
+matching entries from the **index only** — it never touches the files on disk.
+The time window is resolved exactly like `find`, so you can forget a fuzzy span
+as easily as you searched it.
+
+Because it's destructive, `forget` **previews by default** (a dry run) and only
+deletes when you pass `--yes`:
+
+```text
+$ back-then forget "2019"
+Window: 2019-01-01 → 2020-01-01  (128 entries in range)
+Dry run: 128 entries would be pruned from the index (files on disk untouched). Re-run with --yes to apply.
+
+$ back-then forget "2019" --yes
+Window: 2019-01-01 → 2020-01-01  (128 entries in range)
+Forgot 128 index entries. Files on disk are untouched.
+```
+
+```sh
+back-then forget "last spring"        # preview what would be pruned
+back-then forget "2019" --yes         # actually prune those entries
+back-then forget "2019" --json        # machine-readable (reports matched/applied/removed)
+```
+
+Re-running `index` on the same paths re-adds the files, so `forget` is about the
+current index, not permanence. For a hard privacy wipe, forget the range and
+stop indexing that path.
+
 ## Quickstart (planned)
 
 ```sh

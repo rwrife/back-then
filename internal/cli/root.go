@@ -54,6 +54,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newFindCmd(&dbPath))
 	root.AddCommand(newSessionsCmd(&dbPath))
 	root.AddCommand(newNearCmd(&dbPath))
+	root.AddCommand(newForgetCmd(&dbPath))
 
 	return root
 }
