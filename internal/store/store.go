@@ -409,6 +409,60 @@ FROM files WHERE path = ?`, path)
 	return recs[0], true, nil
 }
 
+// windowEffectiveSQL is the effective-time expression used by window filters
+// that operate row-by-row (Candidates, Forget). It mirrors
+// FileRecord.EffectiveTime for the common case: capture time wins, else the
+// earliest of creation and mod time, else mod time.
+//
+// It differs from effectiveTimeSQL only in spelling (a CASE ladder vs nested
+// COALESCE/MIN); both compute the same value. Forget reuses this so the set it
+// deletes is exactly the set find/near would have placed inside the window.
+const windowEffectiveSQL = `CASE
+	WHEN capture_time != 0 THEN capture_time
+	WHEN create_time != 0 AND create_time < mod_time THEN create_time
+	ELSE mod_time
+END`
+
+// Forget deletes every indexed file whose effective timestamp falls within the
+// half-open window [w.Start, w.End) and returns the number of rows removed.
+//
+// Unlike Candidates, Forget applies no margin: it prunes exactly the window the
+// caller resolved, so "forget last spring" removes precisely the files find
+// would have anchored to that span. The delete runs in a single transaction.
+//
+// This is the destructive, opt-in privacy/space command from M6. It only
+// touches the index; it never deletes files from disk.
+func (s *Store) Forget(w when.Window) (int64, error) {
+	res, err := s.db.Exec(
+		`DELETE FROM files WHERE `+windowEffectiveSQL+` >= ? AND `+windowEffectiveSQL+` < ?`,
+		w.Start.UnixNano(), w.End.UnixNano(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("forget window: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("forget rows affected: %w", err)
+	}
+	return n, nil
+}
+
+// CountInWindow reports how many indexed files have an effective timestamp
+// inside the half-open window [w.Start, w.End). It is the read-only companion
+// to Forget, powering `back-then forget --dry-run` so a stranger can preview
+// exactly what a real forget would prune before committing to it.
+func (s *Store) CountInWindow(w when.Window) (int64, error) {
+	var n int64
+	row := s.db.QueryRow(
+		`SELECT COUNT(*) FROM files WHERE `+windowEffectiveSQL+` >= ? AND `+windowEffectiveSQL+` < ?`,
+		w.Start.UnixNano(), w.End.UnixNano(),
+	)
+	if err := row.Scan(&n); err != nil {
+		return 0, fmt.Errorf("count window: %w", err)
+	}
+	return n, nil
+}
+
 // ExtCount is a single extension's file count, used in Stats.TopExts.
 type ExtCount struct {
 	Ext   string
