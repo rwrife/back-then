@@ -1,0 +1,125 @@
+name: Release
+
+# Build cross-compiled binaries and publish a GitHub Release whenever a
+# version tag (e.g. v0.1.0) is pushed. The goal of M6: a stranger can grab a
+# binary for their OS and get value in under a minute.
+on:
+  push:
+    tags:
+      - "v*"
+  # Allow a dry run (build artifacts, skip publishing) from the Actions tab.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          check-latest: true
+          cache: true
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Derive the version from the tag (workflow_dispatch has no tag, so
+          # fall back to a dev-ish label using the short SHA).
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            version="${GITHUB_REF#refs/tags/}"
+          else
+            version="0.0.0-dev+${GITHUB_SHA::7}"
+          fi
+          commit="$(git rev-parse --short HEAD)"
+          date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          pkg="github.com/rwrife/back-then/internal/buildinfo"
+          ldflags="-s -w \
+            -X ${pkg}.Version=${version} \
+            -X ${pkg}.Commit=${commit} \
+            -X ${pkg}.Date=${date}"
+
+          ext=""
+          if [[ "${GOOS}" == "windows" ]]; then
+            ext=".exe"
+          fi
+
+          mkdir -p dist
+          out="back-then${ext}"
+          go build -trimpath -ldflags "${ldflags}" -o "dist/${out}" ./cmd/back-then
+
+          # Package: .zip for Windows, .tar.gz elsewhere. Include a copy of the
+          # README + LICENSE so the archive is self-describing.
+          name="back-then_${version}_${GOOS}_${GOARCH}"
+          workdir="dist/${name}"
+          mkdir -p "${workdir}"
+          mv "dist/${out}" "${workdir}/"
+          cp README.md LICENSE "${workdir}/" 2>/dev/null || cp README.md "${workdir}/"
+
+          cd dist
+          if [[ "${GOOS}" == "windows" ]]; then
+            zip -r "${name}.zip" "${name}" >/dev/null
+            sha256sum "${name}.zip" > "${name}.zip.sha256"
+          else
+            tar -czf "${name}.tar.gz" "${name}"
+            sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256"
+          fi
+          rm -rf "${name}"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: back-then-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    # Only publish when triggered by a tag push; workflow_dispatch is a dry run.
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

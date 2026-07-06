@@ -9,9 +9,38 @@ You don't remember the filename. You remember *roughly when* it happened — "th
 - ⚡ **Fast & tiny.** A single Go binary backed by a local SQLite index. Runs on a potato.
 - 🖥️ **Cross-platform.** Windows, macOS, Linux.
 
-> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1 (scaffolding), M2 (the local index), M3 (fuzzy-time `find`), and M4 (sessions + `near`) are done: `index`, `stats`, `find`, `sessions`, and `near` work today. M5 is in progress — EXIF capture dates and `.backthenignore` scoping have landed.
+> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1–M5 are done: `index`, `stats`, `find`, `sessions`, `near`, and `forget` work today, with EXIF capture dates, blended ranking, and `.backthenignore` scoping. M6 (polish + release) is in progress — cross-compiled release binaries now ship automatically on every version tag.
 
-## Install / build
+## Install
+
+### Download a release binary (recommended)
+
+No Go toolchain required. Grab the archive for your OS/arch from the
+[latest release](https://github.com/rwrife/back-then/releases/latest),
+extract it, and put the `back-then` binary on your `PATH`.
+
+```sh
+# Linux / macOS example (adjust VERSION + platform to match the asset name)
+VERSION=v0.1.0
+OS=linux            # or: darwin
+ARCH=amd64          # or: arm64
+curl -LO "https://github.com/rwrife/back-then/releases/download/${VERSION}/back-then_${VERSION}_${OS}_${ARCH}.tar.gz"
+tar -xzf "back-then_${VERSION}_${OS}_${ARCH}.tar.gz"
+sudo mv "back-then_${VERSION}_${OS}_${ARCH}/back-then" /usr/local/bin/
+
+back-then version
+```
+
+On Windows, download the `..._windows_amd64.zip`, unzip it, and run
+`back-then.exe`. Every release ships a `.sha256` next to each archive so you can
+verify the download.
+
+> Binaries are cross-compiled and published automatically by the
+> [release workflow](.github/workflows/release.yml) on every version tag, so a
+> stranger can go from zero to a working `back-then` in under a minute — no
+> runtime to install.
+
+### Build from source
 
 Requires [Go](https://go.dev/dl/) 1.23+.
 
@@ -23,7 +52,7 @@ go build -o back-then ./cmd/back-then
 go run ./cmd/back-then version
 ```
 
-That's it today — a single static binary, no runtime to install.
+That's it — a single static binary, no runtime to install.
 
 ```sh
 $ back-then version
