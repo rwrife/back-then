@@ -9,7 +9,7 @@ You don't remember the filename. You remember *roughly when* it happened — "th
 - ⚡ **Fast & tiny.** A single Go binary backed by a local SQLite index. Runs on a potato.
 - 🖥️ **Cross-platform.** Windows, macOS, Linux.
 
-> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1–M5 are done: `index`, `stats`, `find`, `sessions`, `near`, and `forget` work today, with EXIF capture dates, blended ranking, and `.backthenignore` scoping. M6 (polish + release) is in progress — cross-compiled release binaries now ship automatically on every version tag.
+> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1–M5 are done: `index`, `stats`, `find`, `sessions`, `near`, and `forget` work today, with EXIF capture dates, blended ranking, and `.backthenignore` scoping. M6 (polish + release) is in progress — `watch` keeps the index fresh on an interval, and cross-compiled release binaries now ship automatically on every version tag.
 
 ## Install
 
@@ -141,6 +141,39 @@ The default-skipped directory names are: `.git`, `.hg`, `.svn`,
 
 The index lives in your user config directory by default; override it with
 `--db /path/to/index.db` (handy for per-volume or throwaway indexes).
+
+### Keeping the index fresh with `watch`
+
+Rather than re-running `index` by hand, `back-then watch` keeps the index
+current by re-scanning your roots on an interval. Each pass is the same
+incremental scan as `index` (unchanged files are skipped), so steady-state
+watching is cheap.
+
+```sh
+# Re-scan every 30s (the default) until you press Ctrl-C
+back-then watch ~/Downloads ~/Documents
+```
+
+```text
+[14:02:11] /home/you/.config/back-then/index.db: 8423 seen, 0 updated, 8423 unchanged.
+Watching 2 path(s); re-scanning every 30s. Press Ctrl-C to stop.
+[14:02:41] /home/you/.config/back-then/index.db: 8424 seen, 1 updated, 8423 unchanged.
+```
+
+Watching is **best-effort and polling-based** — it re-walks on a timer instead
+of subscribing to OS file-change events, which keeps `back-then` a single
+static binary on every platform (no native watcher dependency). Tune the
+cadence with `--interval` (e.g. `--interval 10s`, `--interval 2m`; values are
+floored at 1s), and use `--once` to run a single pass and exit — handy for
+cron jobs or scripts:
+
+```sh
+back-then watch ~/Downloads --interval 10s   # tighter polling
+back-then watch ~/Downloads --once           # one incremental pass, then exit
+```
+
+The same `--skip` list and `.backthenignore` handling as `index` apply, and
+`watch` shuts down cleanly on Ctrl-C (or `SIGTERM`).
 
 ## Inspecting the index
 
