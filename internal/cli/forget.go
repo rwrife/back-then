@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rwrife/back-then/internal/config"
 	"github.com/rwrife/back-then/internal/render"
 	"github.com/rwrife/back-then/internal/store"
 	"github.com/rwrife/back-then/internal/when"
@@ -39,7 +40,7 @@ type forgetJSON struct {
 // be removed and exits without touching the index. Pass --yes to actually
 // delete. This "preview first, opt in to apply" flow keeps a stray `forget`
 // from silently wiping part of someone's index.
-func newForgetCmd(dbPath *string) *cobra.Command {
+func newForgetCmd(dbPath *string, cfg config.Config) *cobra.Command {
 	var asJSON bool
 	var confirm bool
 
@@ -72,7 +73,7 @@ Use --json for scripting.`,
 				return err
 			}
 
-			path, err := defaultDBPath(*dbPath)
+			path, err := resolveDBPath(*dbPath, cfg.DB)
 			if err != nil {
 				return fmt.Errorf("resolve index path: %w", err)
 			}

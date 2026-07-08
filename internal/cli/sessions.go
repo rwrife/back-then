@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rwrife/back-then/internal/config"
 	"github.com/rwrife/back-then/internal/render"
 	"github.com/rwrife/back-then/internal/sessions"
 	"github.com/rwrife/back-then/internal/store"
@@ -33,7 +34,7 @@ type extCountJSON struct {
 // time-clustered sessions from the index and lists each with a one-line
 // summary: when it happened, how many files, the dominant extensions, and the
 // folder most of the files lived in.
-func newSessionsCmd(dbPath *string) *cobra.Command {
+func newSessionsCmd(dbPath *string, cfg config.Config) *cobra.Command {
 	var asJSON bool
 	var limit int
 	var gap time.Duration
@@ -51,7 +52,7 @@ browse time. Use ` + "`back-then near <file>`" + ` to see the other files from a
 particular session.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := defaultDBPath(*dbPath)
+			path, err := resolveDBPath(*dbPath, cfg.DB)
 			if err != nil {
 				return fmt.Errorf("resolve index path: %w", err)
 			}
@@ -121,8 +122,8 @@ particular session.`,
 	}
 
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit machine-readable JSON")
-	cmd.Flags().IntVar(&limit, "limit", 20, "maximum number of sessions to list (0 = all)")
-	cmd.Flags().DurationVar(&gap, "gap", sessions.DefaultGap, "gap between files that starts a new session (e.g. 90m, 3h)")
+	cmd.Flags().IntVar(&limit, "limit", effectiveLimit(cfg, 20), "maximum number of sessions to list (0 = all)")
+	cmd.Flags().DurationVar(&gap, "gap", effectiveGap(cfg, sessions.DefaultGap), "gap between files that starts a new session (e.g. 90m, 3h)")
 
 	return cmd
 }

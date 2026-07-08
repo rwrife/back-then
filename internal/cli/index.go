@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rwrife/back-then/internal/config"
 	"github.com/rwrife/back-then/internal/store"
 	"github.com/rwrife/back-then/internal/walk"
 )
@@ -13,7 +14,7 @@ import (
 // newIndexCmd returns the `back-then index <path...>` subcommand. It walks one
 // or more directory trees and upserts per-file signals into the local SQLite
 // index, skipping files whose size and mod time are unchanged (incremental).
-func newIndexCmd(dbPath *string) *cobra.Command {
+func newIndexCmd(dbPath *string, cfg config.Config) *cobra.Command {
 	var skip []string
 	var noIgnoreFile bool
 
@@ -32,11 +33,22 @@ add more with --skip.
 A .backthenignore file (gitignore-style patterns) in any indexed directory
 prunes matching files and folders in that directory and below. Pass
 --no-ignore-file to ignore those files and index everything the skip list
-allows.`,
-		Args: cobra.MinimumNArgs(1),
+allows.
+
+With no paths, back-then indexes the roots listed in your config file (see
+` + "`back-then config path`" + `).`,
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			roots := args
+			if len(roots) == 0 {
+				roots = cfg.Roots
+			}
+			if len(roots) == 0 {
+				return fmt.Errorf("no paths given and no roots configured; pass a path or set \"roots\" in the config file")
+			}
+
 			// Validate roots up front so a typo fails fast with a clear message.
-			for _, p := range args {
+			for _, p := range roots {
 				info, err := os.Stat(p)
 				if err != nil {
 					return fmt.Errorf("cannot index %q: %w", p, err)
@@ -46,7 +58,7 @@ allows.`,
 				}
 			}
 
-			path, err := defaultDBPath(*dbPath)
+			path, err := resolveDBPath(*dbPath, cfg.DB)
 			if err != nil {
 				return fmt.Errorf("resolve index path: %w", err)
 			}
@@ -57,7 +69,7 @@ allows.`,
 			}
 			defer st.Close()
 
-			res, err := st.Index(args, walk.Options{
+			res, err := st.Index(roots, walk.Options{
 				ExtraSkipDirs: skip,
 				NoIgnoreFile:  noIgnoreFile,
 			})

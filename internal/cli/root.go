@@ -7,8 +7,11 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/rwrife/back-then/internal/config"
 )
 
 // rootLong is the long description shown by `back-then --help`.
@@ -31,6 +34,12 @@ func NewRootCmd() *cobra.Command {
 	// --db flag and defaulting to a per-user data location.
 	var dbPath string
 
+	// cfg holds user defaults loaded from the optional config file. A missing
+	// or unreadable file yields the zero Config so the CLI still works; we
+	// stash any load error and surface it on the first command that runs, so a
+	// typo in the file is loud rather than silent.
+	cfg, cfgErr := loadConfig()
+
 	root := &cobra.Command{
 		Use:   "back-then",
 		Short: "A local-first time machine for your files",
@@ -46,26 +55,66 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
-	root.PersistentFlags().StringVar(&dbPath, "db", "", "path to the index database (default: per-user data dir)")
+	root.PersistentFlags().StringVar(&dbPath, "db", "", "path to the index database (default: config or per-user data dir)")
+
+	// Surface a config-load failure once, before any subcommand does work.
+	if cfgErr != nil {
+		root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+			return cfgErr
+		}
+	}
 
 	root.AddCommand(newVersionCmd())
-	root.AddCommand(newIndexCmd(&dbPath))
-	root.AddCommand(newWatchCmd(&dbPath))
-	root.AddCommand(newStatsCmd(&dbPath))
-	root.AddCommand(newFindCmd(&dbPath))
-	root.AddCommand(newSessionsCmd(&dbPath))
-	root.AddCommand(newNearCmd(&dbPath))
-	root.AddCommand(newForgetCmd(&dbPath))
+	root.AddCommand(newIndexCmd(&dbPath, cfg))
+	root.AddCommand(newWatchCmd(&dbPath, cfg))
+	root.AddCommand(newStatsCmd(&dbPath, cfg))
+	root.AddCommand(newFindCmd(&dbPath, cfg))
+	root.AddCommand(newSessionsCmd(&dbPath, cfg))
+	root.AddCommand(newNearCmd(&dbPath, cfg))
+	root.AddCommand(newForgetCmd(&dbPath, cfg))
+	root.AddCommand(newConfigCmd(cfg))
 
 	return root
 }
 
+// configEnvVar overrides the config file location, primarily for tests and
+// power users who keep multiple profiles.
+const configEnvVar = "BACK_THEN_CONFIG"
+
+// loadConfig resolves the config path (honoring BACK_THEN_CONFIG) and loads it.
+// A missing file is not an error; a malformed one is.
+func loadConfig() (config.Config, error) {
+	path := os.Getenv(configEnvVar)
+	if path == "" {
+		p, err := config.DefaultPath()
+		if err != nil {
+			// No config dir on this OS: proceed with built-in defaults.
+			return config.Config{}, nil
+		}
+		path = p
+	}
+	return config.Load(path)
+}
+
 // defaultDBPath returns the resolved index path: the --db value when set,
-// otherwise <user-data-dir>/back-then/index.db. It ensures the parent
-// directory exists so callers can open the database directly.
+// otherwise the config's db value, otherwise
+// <user-config-dir>/back-then/index.db. It ensures the parent directory exists
+// so callers can open the database directly.
 func defaultDBPath(flagVal string) (string, error) {
+	return resolveDBPath(flagVal, "")
+}
+
+// resolveDBPath is defaultDBPath with an explicit config fallback, letting
+// commands thread their loaded config in without a package global.
+func resolveDBPath(flagVal, cfgDB string) (string, error) {
 	if flagVal != "" {
 		return flagVal, nil
+	}
+	if cfgDB != "" {
+		if err := os.MkdirAll(filepath.Dir(cfgDB), 0o755); err != nil {
+			return "", err
+		}
+		return cfgDB, nil
 	}
 	base, err := os.UserConfigDir()
 	if err != nil || base == "" {
@@ -77,4 +126,23 @@ func defaultDBPath(flagVal string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "index.db"), nil
+}
+
+// effectiveLimit returns the config-provided result limit when the file set
+// one, otherwise the command's built-in fallback. This makes a configured
+// "limit" the default that an explicit --limit flag can still override.
+func effectiveLimit(cfg config.Config, fallback int) int {
+	if cfg.LimitSet {
+		return cfg.Limit
+	}
+	return fallback
+}
+
+// effectiveGap returns the config-provided session gap when set (> 0),
+// otherwise the built-in fallback.
+func effectiveGap(cfg config.Config, fallback time.Duration) time.Duration {
+	if cfg.Gap > 0 {
+		return cfg.Gap
+	}
+	return fallback
 }
