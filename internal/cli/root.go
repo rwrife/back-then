@@ -50,6 +50,7 @@ func NewRootCmd() *cobra.Command {
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newIndexCmd(&dbPath))
+	root.AddCommand(newWatchCmd(&dbPath))
 	root.AddCommand(newStatsCmd(&dbPath))
 	root.AddCommand(newFindCmd(&dbPath))
 	root.AddCommand(newSessionsCmd(&dbPath))
