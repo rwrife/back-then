@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rwrife/back-then/internal/config"
 	"github.com/rwrife/back-then/internal/render"
 	"github.com/rwrife/back-then/internal/sessions"
 	"github.com/rwrife/back-then/internal/store"
@@ -31,7 +32,7 @@ type nearResultJSON struct {
 // newNearCmd returns the `back-then near <file>` subcommand — the episodic
 // payoff. Given a file you remember, it surfaces the other files that arrived
 // around the same time (the rest of that "session"), ordered by proximity.
-func newNearCmd(dbPath *string) *cobra.Command {
+func newNearCmd(dbPath *string, cfg config.Config) *cobra.Command {
 	var asJSON bool
 	var limit int
 	var window time.Duration
@@ -47,7 +48,7 @@ The file must already be in the index (run ` + "`back-then index <path>`" + `
 first). Use --window to widen or narrow how far out to look.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := defaultDBPath(*dbPath)
+			path, err := resolveDBPath(*dbPath, cfg.DB)
 			if err != nil {
 				return fmt.Errorf("resolve index path: %w", err)
 			}
@@ -126,7 +127,7 @@ first). Use --window to widen or narrow how far out to look.`,
 	}
 
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit machine-readable JSON")
-	cmd.Flags().IntVar(&limit, "limit", 20, "maximum number of files to show (0 = all)")
+	cmd.Flags().IntVar(&limit, "limit", effectiveLimit(cfg, 20), "maximum number of files to show (0 = all)")
 	cmd.Flags().DurationVar(&window, "window", 6*time.Hour, "how far before/after the target to look (e.g. 30m, 2h, 24h)")
 
 	return cmd

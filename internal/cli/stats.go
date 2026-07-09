@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rwrife/back-then/internal/config"
 	"github.com/rwrife/back-then/internal/render"
 	"github.com/rwrife/back-then/internal/store"
 )
@@ -27,7 +28,7 @@ type statsJSON struct {
 // newStatsCmd returns the `back-then stats` subcommand, which prints a summary
 // of the current index: file count, total size, the span of modified times,
 // and the most common extensions.
-func newStatsCmd(dbPath *string) *cobra.Command {
+func newStatsCmd(dbPath *string, cfg config.Config) *cobra.Command {
 	var asJSON bool
 	var topN int
 
@@ -39,7 +40,7 @@ their total size, the span between the oldest and newest modified times, and
 the most common file extensions.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := defaultDBPath(*dbPath)
+			path, err := resolveDBPath(*dbPath, cfg.DB)
 			if err != nil {
 				return fmt.Errorf("resolve index path: %w", err)
 			}

@@ -140,7 +140,8 @@ The default-skipped directory names are: `.git`, `.hg`, `.svn`,
 `.ruff_cache`, `.tox`, `.bundle`, `.DS_Store`, `.Trash`, `.trash`.
 
 The index lives in your user config directory by default; override it with
-`--db /path/to/index.db` (handy for per-volume or throwaway indexes).
+`--db /path/to/index.db` (handy for per-volume or throwaway indexes), or set a
+permanent default in the [config file](#configuration).
 
 ### Keeping the index fresh with `watch`
 
@@ -343,6 +344,59 @@ back-then forget "2019" --json        # machine-readable (reports matched/applie
 Re-running `index` on the same paths re-adds the files, so `forget` is about the
 current index, not permanence. For a hard privacy wipe, forget the range and
 stop indexing that path.
+
+## Configuration
+
+Retyping the same flags gets old. `back-then` reads optional defaults from a
+small JSON file so you can set them once. Every key is optional, and an
+explicit flag on the command line always wins over the file.
+
+Find (or decide where to create) the file:
+
+```sh
+$ back-then config path
+/home/you/.config/back-then/config.json  [default, not present (using built-in defaults)]
+```
+
+Create it with any subset of these keys:
+
+```json
+{
+  "db": "/mnt/photos/back-then.db",
+  "roots": ["/home/you/Pictures", "/home/you/Documents"],
+  "gap": "90m",
+  "limit": 15
+}
+```
+
+| Key     | Type       | Effect |
+| ------- | ---------- | ------ |
+| `db`    | string     | Where the index database lives (same as `--db`). |
+| `roots` | string[]   | Folders that bare `index` / `watch` scan when you pass no paths. |
+| `gap`   | string     | Session-split gap for `sessions`, e.g. `"90m"` or `"3h"`. |
+| `limit` | number     | Default result cap for list commands (`-1` = no cap). |
+
+With `roots` set, day-to-day use gets terse:
+
+```sh
+back-then index          # scans your configured roots
+back-then watch          # keeps them fresh
+back-then find "last spring"
+```
+
+Check what's actually in effect (config values merged with built-in defaults):
+
+```sh
+$ back-then config show
+db     /home/you/.config/back-then/index.db
+roots  /home/you/Pictures, /home/you/Documents
+gap    1h30m0s
+limit  15
+```
+
+Keep multiple profiles by pointing `BACK_THEN_CONFIG` at a different file. A
+typo in the config (bad JSON, an unknown key, or an unparseable duration) fails
+loudly rather than being silently ignored.
 
 ## Quickstart (planned)
 

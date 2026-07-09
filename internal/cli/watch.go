@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rwrife/back-then/internal/config"
 	"github.com/rwrife/back-then/internal/store"
 	"github.com/rwrife/back-then/internal/walk"
 )
@@ -35,7 +36,7 @@ type indexer interface {
 // index fresh by re-scanning the given roots on an interval, reusing the exact
 // same incremental walk as `index` (unchanged files are skipped), so each pass
 // only touches what actually moved. It runs until interrupted (Ctrl-C).
-func newWatchCmd(dbPath *string) *cobra.Command {
+func newWatchCmd(dbPath *string, cfg config.Config) *cobra.Command {
 	var skip []string
 	var noIgnoreFile bool
 	var interval time.Duration
@@ -57,11 +58,22 @@ subscribing to OS file events), which keeps back-then a single static binary
 on every platform. Use --interval to tune the cadence and --once to run a
 single pass and exit (handy for cron or scripts).
 
-Press Ctrl-C to stop.`,
-		Args: cobra.MinimumNArgs(1),
+Press Ctrl-C to stop.
+
+With no paths, back-then watches the roots listed in your config file (see
+` + "`back-then config path`" + `).`,
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			roots := args
+			if len(roots) == 0 {
+				roots = cfg.Roots
+			}
+			if len(roots) == 0 {
+				return fmt.Errorf("no paths given and no roots configured; pass a path or set \"roots\" in the config file")
+			}
+
 			// Validate roots up front so a typo fails fast, mirroring `index`.
-			for _, p := range args {
+			for _, p := range roots {
 				info, err := os.Stat(p)
 				if err != nil {
 					return fmt.Errorf("cannot watch %q: %w", p, err)
@@ -75,7 +87,7 @@ Press Ctrl-C to stop.`,
 				interval = minWatchInterval
 			}
 
-			path, err := defaultDBPath(*dbPath)
+			path, err := resolveDBPath(*dbPath, cfg.DB)
 			if err != nil {
 				return fmt.Errorf("resolve index path: %w", err)
 			}
@@ -92,7 +104,7 @@ Press Ctrl-C to stop.`,
 			defer stop()
 
 			opts := walk.Options{ExtraSkipDirs: skip, NoIgnoreFile: noIgnoreFile}
-			return runWatch(ctx, st, cmd.OutOrStdout(), path, args, opts, interval, once)
+			return runWatch(ctx, st, cmd.OutOrStdout(), path, roots, opts, interval, once)
 		},
 	}
 

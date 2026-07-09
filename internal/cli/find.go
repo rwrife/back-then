@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rwrife/back-then/internal/config"
 	"github.com/rwrife/back-then/internal/rank"
 	"github.com/rwrife/back-then/internal/render"
 	"github.com/rwrife/back-then/internal/store"
@@ -41,7 +42,7 @@ type findJSON struct {
 // newFindCmd returns the `back-then find "<query>"` subcommand: it turns a
 // fuzzy time phrase into a window, pulls candidate files from the index, ranks
 // them by time proximity, and prints the top matches.
-func newFindCmd(dbPath *string) *cobra.Command {
+func newFindCmd(dbPath *string, cfg config.Config) *cobra.Command {
 	var asJSON bool
 	var limit int
 
@@ -72,7 +73,7 @@ change how many results are shown.`,
 				return err
 			}
 
-			path, err := defaultDBPath(*dbPath)
+			path, err := resolveDBPath(*dbPath, cfg.DB)
 			if err != nil {
 				return fmt.Errorf("resolve index path: %w", err)
 			}
@@ -100,7 +101,7 @@ change how many results are shown.`,
 	}
 
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit machine-readable JSON")
-	cmd.Flags().IntVar(&limit, "limit", 20, "maximum number of results to show")
+	cmd.Flags().IntVar(&limit, "limit", effectiveLimit(cfg, 20), "maximum number of results to show")
 
 	return cmd
 }
