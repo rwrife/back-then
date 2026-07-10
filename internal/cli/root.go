@@ -70,6 +70,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newStatsCmd(&dbPath, cfg))
 	root.AddCommand(newFindCmd(&dbPath, cfg))
 	root.AddCommand(newSessionsCmd(&dbPath, cfg))
+	root.AddCommand(newTagCmd(&dbPath, cfg))
 	root.AddCommand(newNearCmd(&dbPath, cfg))
 	root.AddCommand(newForgetCmd(&dbPath, cfg))
 	root.AddCommand(newConfigCmd(cfg))
