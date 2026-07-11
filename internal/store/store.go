@@ -21,7 +21,7 @@ import (
 
 // schemaVersion is bumped when the on-disk schema changes in an incompatible
 // way. It is stored in PRAGMA user_version.
-const schemaVersion = 1
+const schemaVersion = 2
 
 // schema is the DDL applied on open. It is idempotent (IF NOT EXISTS) so
 // opening an existing index is a no-op beyond the version check.
@@ -39,6 +39,19 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX IF NOT EXISTS idx_files_mod_time ON files(mod_time);
 CREATE INDEX IF NOT EXISTS idx_files_ext      ON files(ext);
 CREATE INDEX IF NOT EXISTS idx_files_parent   ON files(parent_dir);
+
+-- session_labels holds user-given names for sessions (M-tags). A session is an
+-- ephemeral, recomputed cluster, so we key a label by the session's stable
+-- identity (its start time, as id) and persist the resolved window so find can
+-- match the label back to a concrete time span without re-clustering.
+CREATE TABLE IF NOT EXISTS session_labels (
+	id         TEXT    NOT NULL PRIMARY KEY, -- session id (start time, e.g. 20240115-0930)
+	label      TEXT    NOT NULL,             -- human name, e.g. "Berlin trip"
+	start_ns   INTEGER NOT NULL,            -- window start, unix nanoseconds
+	end_ns     INTEGER NOT NULL,            -- window end, unix nanoseconds
+	created_at INTEGER NOT NULL             -- unix nanoseconds of tag creation
+);
+CREATE INDEX IF NOT EXISTS idx_labels_label ON session_labels(label);
 `
 
 // Store wraps the SQLite handle and the prepared statements back-then uses.
@@ -79,13 +92,16 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&ver); err != nil {
 		return fmt.Errorf("read user_version: %w", err)
 	}
-	if ver != 0 && ver != schemaVersion {
+	if ver > schemaVersion {
 		return fmt.Errorf("index schema version %d is newer than supported %d; upgrade back-then", ver, schemaVersion)
 	}
+	// All schema changes so far are additive (new tables/indexes guarded by
+	// IF NOT EXISTS), so applying the current DDL over an older index upgrades
+	// it in place without data migration.
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
-	if ver == 0 {
+	if ver != schemaVersion {
 		if _, err := s.db.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 			return fmt.Errorf("set user_version: %w", err)
 		}
@@ -533,4 +549,91 @@ FROM files GROUP BY e ORDER BY c DESC, e ASC LIMIT ?`, topN)
 	})
 
 	return st, nil
+}
+
+// Label is a user-given name for a session, together with the time window that
+// session covered. The window is persisted so find can match the label back to
+// a concrete span without re-clustering the whole index.
+type Label struct {
+	// ID is the session identity the label was attached to (the session's
+	// start time, formatted compactly, e.g. "20240115-0930").
+	ID string
+	// Label is the human-facing name, e.g. "Berlin trip".
+	Label string
+	// Start and End bracket the labeled session on the timeline.
+	Start time.Time
+	End   time.Time
+	// CreatedAt is when the tag was created.
+	CreatedAt time.Time
+}
+
+// AddLabel stores (or replaces) a label for the session identified by id,
+// persisting the session's window so it can be recalled later. Re-tagging the
+// same session id overwrites the previous label.
+func (s *Store) AddLabel(id, label string, start, end time.Time) error {
+	if id == "" {
+		return fmt.Errorf("empty session id")
+	}
+	if label == "" {
+		return fmt.Errorf("empty label")
+	}
+	_, err := s.db.Exec(`
+INSERT INTO session_labels (id, label, start_ns, end_ns, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+	label=excluded.label,
+	start_ns=excluded.start_ns,
+	end_ns=excluded.end_ns,
+	created_at=excluded.created_at`,
+		id, label, start.UnixNano(), end.UnixNano(), time.Now().UnixNano())
+	if err != nil {
+		return fmt.Errorf("add label: %w", err)
+	}
+	return nil
+}
+
+// Labels returns every stored label, ordered by window start ascending.
+func (s *Store) Labels() ([]Label, error) {
+	rows, err := s.db.Query(`
+SELECT id, label, start_ns, end_ns, created_at
+FROM session_labels ORDER BY start_ns ASC, id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("query labels: %w", err)
+	}
+	defer rows.Close()
+	return scanLabels(rows)
+}
+
+// LabelByName returns the stored labels whose name matches (case-insensitively)
+// the given text. A session name is not guaranteed unique, so callers get all
+// matches; find uses the union of their windows.
+func (s *Store) LabelByName(name string) ([]Label, error) {
+	rows, err := s.db.Query(`
+SELECT id, label, start_ns, end_ns, created_at
+FROM session_labels WHERE label = ? COLLATE NOCASE
+ORDER BY start_ns ASC, id ASC`, name)
+	if err != nil {
+		return nil, fmt.Errorf("query label by name: %w", err)
+	}
+	defer rows.Close()
+	return scanLabels(rows)
+}
+
+func scanLabels(rows *sql.Rows) ([]Label, error) {
+	var out []Label
+	for rows.Next() {
+		var l Label
+		var start, end, created int64
+		if err := rows.Scan(&l.ID, &l.Label, &start, &end, &created); err != nil {
+			return nil, fmt.Errorf("scan label: %w", err)
+		}
+		l.Start = time.Unix(0, start)
+		l.End = time.Unix(0, end)
+		l.CreatedAt = time.Unix(0, created)
+		out = append(out, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate labels: %w", err)
+	}
+	return out, nil
 }

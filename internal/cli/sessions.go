@@ -18,6 +18,8 @@ import (
 
 // sessionJSON is the stable shape emitted by `back-then sessions --json`.
 type sessionJSON struct {
+	ID        string         `json:"id"`
+	Label     string         `json:"label,omitempty"`
 	Start     string         `json:"start"`
 	End       string         `json:"end"`
 	Count     int            `json:"count"`
@@ -70,6 +72,17 @@ particular session.`,
 
 			sess := sessions.Cluster(files, sessions.Options{Gap: gap, FolderAware: true})
 
+			// Load labels once and index them by session id so each row can show
+			// its name (when tagged) without a per-session query.
+			labelByID := map[string]string{}
+			labels, err := st.Labels()
+			if err != nil {
+				return err
+			}
+			for _, l := range labels {
+				labelByID[l.ID] = l.Label
+			}
+
 			// Present newest-first: the most recent episode is usually what you
 			// are hunting for.
 			reverse(sess)
@@ -84,6 +97,8 @@ particular session.`,
 				for _, s := range sess {
 					top, _ := s.TopFolder()
 					sj := sessionJSON{
+						ID:        s.ID(),
+						Label:     labelByID[s.ID()],
 						Start:     s.Start.Format(time.RFC3339),
 						End:       s.End.Format(time.RFC3339),
 						Count:     s.Count(),
@@ -107,13 +122,17 @@ particular session.`,
 			}
 
 			tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-			if _, err := fmt.Fprintln(tw, "WHEN\tFILES\tTYPES\tTOP FOLDER"); err != nil {
+			if _, err := fmt.Fprintln(tw, "ID\tLABEL\tWHEN\tFILES\tTYPES\tTOP FOLDER"); err != nil {
 				return err
 			}
 			for _, s := range sess {
 				top, _ := s.TopFolder()
-				if _, err := fmt.Fprintf(tw, "%s\t%d\t%s\t%s\n",
-					sessionWhen(s), s.Count(), extsSummary(s.DominantExts(3)), shortenPath(top)); err != nil {
+				label := labelByID[s.ID()]
+				if label == "" {
+					label = "\u2014"
+				}
+				if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n",
+					s.ID(), label, sessionWhen(s), s.Count(), extsSummary(s.DominantExts(3)), shortenPath(top)); err != nil {
 					return err
 				}
 			}

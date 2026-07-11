@@ -46,6 +46,22 @@ type Session struct {
 // Count is the number of files in the session.
 func (s Session) Count() int { return len(s.Files) }
 
+// idLayout is the compact, sortable format used for a session's stable id: the
+// session's start time to the minute (e.g. "20240115-0930"). It is stable
+// across re-clustering as long as the same gap and files produce the same
+// first-file time, which is the common case for browsing/tagging.
+const idLayout = "20060102-1504"
+
+// ID returns a stable, human-typable identifier for the session derived from
+// its start time. It is used to tag a session by name and to show which
+// session a label belongs to.
+func (s Session) ID() string {
+	if s.Start.IsZero() {
+		return ""
+	}
+	return s.Start.Format(idLayout)
+}
+
 // Duration is the span from the first to the last file.
 func (s Session) Duration() time.Duration { return s.End.Sub(s.Start) }
 

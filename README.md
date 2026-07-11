@@ -326,6 +326,10 @@ Filler words (`around`, `the`, `sometime`, `in`) are ignored, and matching is
 case-insensitive. Files inside the window score `1.00`; files just outside
 decay smoothly with distance, so near-misses still surface.
 
+If a phrase isn't a recognizable date but matches a **session label** you set
+with [`back-then tag`](#naming-sessions-with-tag), `find` resolves it to that
+session's window — so `back-then find "Berlin trip"` just works.
+
 ### How ranking blends signals
 
 Time proximity is the primary driver and sets a ceiling on every file's score.
@@ -366,10 +370,10 @@ those files lived in:
 
 ```text
 $ back-then sessions
-WHEN                    FILES  TYPES          TOP FOLDER
-2026-06-29 14:02–14:19  37     .jpg×31 .mov×4  …/Photos/2026-06-29
-2026-06-12 09:41–10:03  6      .pdf×4 .docx×2  …/Documents/taxes
-2026-05-30 21:10        1      .zip×1          …/Downloads
+ID             LABEL        WHEN                    FILES  TYPES           TOP FOLDER
+20260629-1402  —            2026-06-29 14:02–14:19  37     .jpg×31 .mov×4  …/Photos/2026-06-29
+20260612-0941  Berlin trip  2026-06-12 09:41–10:03  6      .pdf×4 .docx×2  …/Documents/taxes
+20260530-2110  —            2026-05-30 21:10        1      .zip×1          …/Downloads
 ```
 
 Sessions are split wherever the gap between consecutive files gets large. The
@@ -381,6 +385,34 @@ back-then sessions --gap 90m     # tighter bursts
 back-then sessions --gap 6h      # looser grouping
 back-then sessions --json        # machine-readable
 ```
+
+The **ID** column is a stable handle for a session (its start time). Feed it to
+`back-then tag` to give the session a memorable name.
+
+## Naming sessions with `tag`
+
+Humans remember episodes by name, not by date. Once you spot a session in
+`back-then sessions`, name it — and recall gets dramatically easier:
+
+```text
+$ back-then tag 20260612-0941 "Berlin trip"
+Tagged session 20260612-0941 (6 files) as "Berlin trip".
+```
+
+Afterwards the label shows up in the **LABEL** column of `back-then sessions`,
+and `find` matches the name straight to that window:
+
+```text
+$ back-then find "Berlin trip"
+Window: 2026-06-12 → 2026-06-12  (6 matches)
+SCORE  WHEN              SIZE      PATH
+0.98   2026-06-12 09:43  1.2 MiB   /home/you/Downloads/boarding-pass.pdf
+...
+```
+
+Tagging the same session again replaces its label. Labels live in the local
+SQLite index — nothing leaves the machine. Pass the same `--gap` you used when
+listing so the ids line up.
 
 ## `near` — what arrived together?
 

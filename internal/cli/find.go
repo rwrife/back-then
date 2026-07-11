@@ -68,11 +68,6 @@ change how many results are shown.`,
 			query := args[0]
 			now := time.Now()
 
-			w, err := when.Parse(query, now)
-			if err != nil {
-				return err
-			}
-
 			path, err := resolveDBPath(*dbPath, cfg.DB)
 			if err != nil {
 				return fmt.Errorf("resolve index path: %w", err)
@@ -82,6 +77,21 @@ change how many results are shown.`,
 				return err
 			}
 			defer st.Close()
+
+			w, err := when.Parse(query, now)
+			if err != nil {
+				// Not a time phrase? It may be a session label. Fall back to a
+				// label lookup so `find "Berlin trip"` jumps to the tagged
+				// window. Only surface the parse error when no label matches.
+				labels, lerr := st.LabelByName(query)
+				if lerr != nil {
+					return lerr
+				}
+				if len(labels) == 0 {
+					return err
+				}
+				w = labelWindow(labels)
+			}
 
 			cands, err := st.Candidates(w, 0)
 			if err != nil {
@@ -163,4 +173,21 @@ func plural(n int) string {
 // round3 rounds to three decimal places for stable JSON output.
 func round3(f float64) float64 {
 	return float64(int64(f*1000+0.5)) / 1000
+}
+
+// labelWindow collapses one or more matched labels into a single window
+// spanning the earliest start to the latest end. A session name is not
+// guaranteed unique (two trips could share a name), so find searches the union
+// of every matching window rather than picking one arbitrarily.
+func labelWindow(labels []store.Label) when.Window {
+	w := when.Window{Start: labels[0].Start, End: labels[0].End}
+	for _, l := range labels[1:] {
+		if l.Start.Before(w.Start) {
+			w.Start = l.Start
+		}
+		if l.End.After(w.End) {
+			w.End = l.End
+		}
+	}
+	return w
 }
