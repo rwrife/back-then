@@ -438,6 +438,46 @@ back-then near ~/Downloads/mystery.pdf --window 24h   # the whole day
 back-then near ~/Downloads/mystery.pdf --json
 ```
 
+## `timeline` — scrub across time (interactive TUI)
+
+Browsing *time* beats browsing folders. `back-then timeline` opens an
+interactive scrubber: a horizontal axis spans from your oldest indexed file to
+your newest, and the “heat” under each column shows how many sessions landed in
+that slice. Arrow across the axis and sessions light up beneath the cursor;
+their files appear in a side pane.
+
+```text
+$ back-then timeline
+back-then timeline    2026-01-04  →  2026-06-28
+
+  ··▒·▓··█▒··▒▓··│·▒··
+  cursor: 2026-06-12 09:41
+
+  1 session(s) here:
+    20260612-0941  6 files  /home/you/Downloads
+
+  files:
+  ❯ 2026-06-12 09:41  /home/you/Downloads/mystery.pdf
+    2026-06-12 09:43  /home/you/Downloads/boarding-pass.pdf
+    2026-06-12 09:55  /home/you/Documents/taxes/w2.pdf
+```
+
+Keys:
+
+- **←/→** (or `h`/`l`) — move the cursor one column
+- **Tab / Shift+Tab** — jump to the next / previous populated column
+- **↑/↓** (or `j`/`k`) — move the file selection in the side pane
+- **Home / End** — jump to the oldest / newest column
+- **enter** or **c** — copy the selected file's path to the clipboard
+- **o** — open the selected file's containing folder
+- **q** / **esc** — quit
+
+Use `--gap` to control session clustering, exactly like `back-then sessions`.
+The index is opened read-only — `timeline` never modifies your files or the
+database. Clipboard/open rely on the usual OS tools (`pbcopy`/`clip` or
+`wl-copy`/`xclip`/`xsel`, and `open`/`explorer`/`xdg-open`); when none is
+available the full path is shown so you can copy it by hand.
+
 ## `forget` — prune the index for privacy or space
 
 Changed your mind about indexing a stretch of time? `back-then forget` removes
@@ -536,6 +576,9 @@ back-then near ~/Downloads/mystery.pdf
 # Find by fuzzy time
 back-then find "around last spring"
 back-then find "the week of jun 3"
+
+# Or scrub the whole timeline interactively
+back-then timeline
 ```
 
 Add `--json` to any command for scripting.
