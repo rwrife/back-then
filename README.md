@@ -9,7 +9,7 @@ You don't remember the filename. You remember *roughly when* it happened — "th
 - ⚡ **Fast & tiny.** A single Go binary backed by a local SQLite index. Runs on a potato.
 - 🖥️ **Cross-platform.** Windows, macOS, Linux.
 
-> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1–M5 are done: `index`, `stats`, `find`, `sessions`, `near`, and `forget` work today, with EXIF capture dates, blended ranking, and `.backthenignore` scoping. M6 (polish + release) is nearly wrapped — `watch` keeps the index fresh on an interval, a config file sets your defaults, cross-compiled release binaries ship automatically on every version tag, and there's a [reproducible demo](#demo) below.
+> ⚠️ Early days — see [PLAN.md](./PLAN.md) for the roadmap. M1–M5 are done: `index`, `stats`, `find`, `sessions`, `near`, `dupes`, and `forget` work today, with EXIF capture dates, blended ranking, and `.backthenignore` scoping. M6 (polish + release) is nearly wrapped — `watch` keeps the index fresh on an interval, a config file sets your defaults, cross-compiled release binaries ship automatically on every version tag, and there's a [reproducible demo](#demo) below.
 
 ## Demo
 
@@ -437,6 +437,50 @@ back-then near ~/Downloads/mystery.pdf --window 30m   # only the tight burst
 back-then near ~/Downloads/mystery.pdf --window 24h   # the whole day
 back-then near ~/Downloads/mystery.pdf --json
 ```
+
+## `dupes` — surface likely-duplicate files
+
+Humans download or copy the same file twice all the time. `back-then dupes`
+finds those redundant copies from the **existing index** — no full-disk hash
+sweep — by reusing the session/time-cluster primitive: files that share an exact
+size and extension and arrived close together are almost certainly the same
+bytes.
+
+```sh
+back-then dupes
+```
+
+```text
+SIZE       COPIES  WASTED     KEEP / DUPES
+2.0 KiB    2       2.0 KiB    keep  /home/you/Downloads/report.pdf
+                              dupe  /home/you/Downloads/report (1).pdf
+
+1 suspected duplicate group(s), 2.0 KiB reclaimable.
+```
+
+Grouping is metadata-only and cheap. When exactness matters, add `--verify` to
+confirm each group with a streamed content hash — decoys that merely share a
+size are dropped, so what's left is byte-for-byte identical:
+
+```sh
+back-then dupes --verify
+```
+
+Scope it, or wire it into your own cleanup:
+
+```sh
+back-then dupes --session 20240115-0930   # only one session's files
+back-then dupes --within 24h              # same-size files must arrive within a day
+back-then dupes --min-size 1048576        # ignore anything under 1 MiB
+back-then dupes --json                     # grouped table as JSON (keep, dupes, wasted bytes)
+
+# read-only by design — never deletes. Pipe the redundant copies to your own rm:
+back-then dupes --verify --print0 | xargs -0 rm -i
+```
+
+The keeper (first file listed / `keep` in JSON) is always the **oldest** copy;
+`--print0` emits only the redundant copies, NUL-separated, so filenames with
+spaces or newlines survive the pipe.
 
 ## `timeline` — scrub across time (interactive TUI)
 
