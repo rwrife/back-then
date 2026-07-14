@@ -438,6 +438,46 @@ back-then near ~/Downloads/mystery.pdf --window 24h   # the whole day
 back-then near ~/Downloads/mystery.pdf --json
 ```
 
+## `export` — bundle an episode into a folder or zip
+
+Once `find`/`sessions`/`near` have located the episode, `back-then export`
+closes the loop: it **copies** those files into a dated bundle so you can hand
+them off, archive them, or just have them in one place. Originals are never
+moved or modified — export only reads.
+
+Select what to export either by session id or by the same fuzzy time phrases
+`find` understands:
+
+```
+$ back-then export --session 20240115-0930 --out ~/exports
+Exported 42 files (318 MB) as folder ~/exports/back-then-berlin-trip
+
+$ back-then export "last spring" --out ~/exports --zip
+Exported 118 files (1.2 GB) as zip ~/exports/back-then-2025-03-01_to_2025-06-01.zip
+```
+
+When a session is tagged (see `tag`), its name is used for the bundle;
+otherwise the bundle is named by session id or the resolved window.
+
+Flags:
+
+```
+back-then export --session 20240115-0930           # a specific session
+back-then export "the week of jun 3"               # a fuzzy time window
+back-then export "2019" --zip                      # single .zip instead of a folder
+back-then export "2019" --flat                     # drop everything in the bundle root
+back-then export "2019" --dry-run                  # preview files + total bytes, write nothing
+back-then export "2019" --out ~/exports --force    # overwrite an existing bundle
+back-then export "2019" --json                     # machine-readable manifest
+```
+
+By default the source directory structure is preserved under the bundle;
+`--flat` places every file in the bundle root instead. Either way, filename
+collisions are made safe with a numeric suffix (`report (2).pdf`) rather than
+overwriting. An existing destination is refused unless you pass `--force`, and
+`--dry-run` shows exactly what would be copied (and how many bytes) before you
+commit.
+
 ## `dupes` — surface likely-duplicate files
 
 Humans download or copy the same file twice all the time. `back-then dupes`
