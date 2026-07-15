@@ -478,6 +478,50 @@ overwriting. An existing destination is refused unless you pass `--force`, and
 `--dry-run` shows exactly what would be copied (and how many bytes) before you
 commit.
 
+## Shell integration — pipe results into fzf, xargs, and `cd`
+
+`back-then` plays nicely with the rest of your terminal. `find` can emit bare
+paths instead of a table so results flow into other tools:
+
+```sh
+# newline-separated absolute paths (no table chrome)
+back-then find "last spring" --paths-only
+
+# NUL-separated absolute paths for safe piping
+back-then find "last spring" --print0 | xargs -0 ls -la
+back-then find "last spring" --print0 | fzf --read0
+```
+
+Both flags print absolute paths only; the table stays the default so nothing
+breaks.
+
+### `shell-init` — a `bt` alias and a fuzzy `bt-cd` jump
+
+```sh
+back-then shell-init bash   # or: zsh, fish
+```
+
+prints a sourceable snippet defining:
+
+- `bt` — a short alias for `back-then`.
+- `bt-cd "<time phrase>"` — run a find, fuzzy-pick a result with fzf, and `cd`
+  into the chosen file's folder (it prints a friendly note if fzf isn't
+  installed).
+
+Install it by adding one line to your shell rc file:
+
+```sh
+# ~/.bashrc
+eval "$(back-then shell-init bash)"
+# ~/.zshrc
+eval "$(back-then shell-init zsh)"
+# ~/.config/fish/config.fish
+back-then shell-init fish | source
+```
+
+The snippet is emitted as a static string — nothing is `eval`'d from remote or
+user data.
+
 ## `dupes` — surface likely-duplicate files
 
 Humans download or copy the same file twice all the time. `back-then dupes`
