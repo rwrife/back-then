@@ -44,6 +44,8 @@ type findJSON struct {
 // them by time proximity, and prints the top matches.
 func newFindCmd(dbPath *string, cfg config.Config) *cobra.Command {
 	var asJSON bool
+	var print0 bool
+	var pathsOnly bool
 	var limit int
 
 	cmd := &cobra.Command{
@@ -103,6 +105,12 @@ change how many results are shown.`,
 			}
 
 			out := cmd.OutOrStdout()
+			if print0 {
+				return emitFindPaths(out, ranked, '\x00')
+			}
+			if pathsOnly {
+				return emitFindPaths(out, ranked, '\n')
+			}
 			if asJSON {
 				return emitFindJSON(out, query, w, ranked)
 			}
@@ -111,6 +119,8 @@ change how many results are shown.`,
 	}
 
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit machine-readable JSON")
+	cmd.Flags().BoolVar(&print0, "print0", false, "emit NUL-separated absolute paths for xargs -0 / fzf --read0")
+	cmd.Flags().BoolVar(&pathsOnly, "paths-only", false, "emit newline-separated paths only (no table)")
 	cmd.Flags().IntVar(&limit, "limit", effectiveLimit(cfg, 20), "maximum number of results to show")
 
 	return cmd
@@ -133,6 +143,21 @@ func emitFindJSON(out io.Writer, query string, w when.Window, ranked []rank.Cand
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	return enc.Encode(js)
+}
+
+// emitFindPaths writes one absolute path per result separated by sep ('\n' or
+// NUL). It is the machine-friendly output used by --paths-only and --print0 so
+// results can flow into fzf, xargs -0, and shell helpers without table parsing.
+func emitFindPaths(out io.Writer, ranked []rank.Candidate, sep byte) error {
+	for _, c := range ranked {
+		if _, err := io.WriteString(out, c.Path); err != nil {
+			return err
+		}
+		if _, err := out.Write([]byte{sep}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func emitFindTable(out io.Writer, w when.Window, ranked []rank.Candidate) error {

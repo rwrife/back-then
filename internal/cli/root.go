@@ -76,6 +76,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newDupesCmd(&dbPath, cfg))
 	root.AddCommand(newExportCmd(&dbPath, cfg))
 	root.AddCommand(newForgetCmd(&dbPath, cfg))
+	root.AddCommand(newShellInitCmd())
 	root.AddCommand(newConfigCmd(cfg))
 
 	return root
